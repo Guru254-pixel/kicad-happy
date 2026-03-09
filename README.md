@@ -150,6 +150,12 @@ The analysis isn't limited to motor controllers. Here's what it automatically id
 
 Claude then cross-references all of this against datasheets to validate component values, check absolute maximum ratings, and verify the design matches the manufacturer's reference circuit. The report includes positive findings too — not just bugs, but confirmation that things are done right.
 
+### 📄 [Full example report →](example-report.md)
+
+> "Analyze my KiCad project at `hardware/rev2/`. Give me a complete design review."
+
+A complete design review of an ESP32-S3 battery-powered IoT board — 52 components, 2-layer, dual boost converters, USB host, touch sensing. Power tree, signal analysis, PCB cross-reference, DFM checks, issues, and positive findings. All from that one prompt.
+
 ### 📄 Sync datasheets for a project
 
 > "Sync the datasheets for my board at `hardware/rev2/`"
