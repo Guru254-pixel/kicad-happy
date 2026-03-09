@@ -29,6 +29,16 @@ Use this template. Every section adds value — don't skip sections, but note "N
 ## Overview
 [2-4 sentence description of the board: MCU, power architecture, key peripherals, domain (IoT/motor control/RF/instrumentation/etc.), form factor context]
 
+## Critical Findings
+[**This section comes first** so the designer sees the most important issues immediately. Move here after completing the full analysis.]
+
+| Severity | Issue | Section |
+|----------|-------|---------|
+| CRITICAL | [Board won't function, safety hazard, or fabrication failure] | [link to section with details] |
+| WARNING  | [Suboptimal but board may work, potential reliability issue] | [link to section with details] |
+
+[Only CRITICAL and WARNING items here. SUGGESTION-level items go in the Issues Found section later. If no CRITICAL or WARNING issues: "No critical or warning-level issues found." — this itself is a valuable finding.]
+
 ## Component Summary
 [Table: Type | Count, broken down by resistors, capacitors, ICs, connectors, etc.]
 [One-line stats: Nets, Wires, No-connects, Power rails, Sheets]
@@ -42,8 +52,8 @@ Use this template. Every section adds value — don't skip sections, but note "N
 ## Analyzer Verification
 [Spot-checks proving the analyzer data is trustworthy]
 ### Component Count — [N/N match status]
-### IC Spot-Check — [Table: 3-5 key ICs verified against raw schematic: Ref | Value | lib_id | Footprint | Match]
-### Net Tracing — [2-3 nets manually traced: list all pins, verify connectivity, confirm correctness]
+### Component Pinout Verification — [Table: ALL components verified against raw schematic + datasheets: Ref | Value | lib_id | Footprint | Pin Count | All Pins Verified | Datasheet Cross-checked | Match. Every component must be checked — not just ICs. Include connectors, transistors, diodes, and critical passives.]
+### Net Tracing — [All power rails + critical signal nets traced end-to-end: list all pins, verify connectivity, confirm correctness]
 ### PCB Verification — [If PCB analyzed: footprint count match, pad-net spot-check, board dimensions confirmed]
 ### Gerber Verification — [If gerbers analyzed: layer completeness, drill count, alignment check]
 
@@ -189,7 +199,7 @@ Use this template. Every section adds value — don't skip sections, but note "N
 ## Schematic ↔ PCB Cross-Reference
 [Include when both schematic and PCB were analyzed — this catches the most dangerous bugs]
 ### Component Count Match — [Schematic (excl. power symbols) vs PCB footprint count]
-### Pin-Net Verification — [3-5 critical ICs: schematic pin mapping vs PCB pad mapping]
+### Pin-Net Verification — [ALL components: schematic pin mapping vs PCB pad mapping. Table: Ref | Pins | All Match | Mismatches. Do not sample — verify every component including connectors, transistors, diodes.]
 ### Footprint Match — [Schematic Footprint property vs actual PCB footprint]
 ### Value/MPN Consistency — [Spot-check values and MPNs between schematic and PCB]
 ### DNP Consistency — [Components marked DNP in schematic should not have routing on PCB]
@@ -226,14 +236,14 @@ Use this template. Every section adds value — don't skip sections, but note "N
 ### Simulation Readiness
 [Components likely simulatable vs needing SPICE models, coverage percentage]
 
-## Issues Found
-[The most important section — prioritized table of design issues]
+## All Issues & Suggestions
+[Complete list of all findings. CRITICAL and WARNING items were already shown in the Critical Findings section at the top — repeat them here with full detail and context. SUGGESTION items appear here only.]
 
-| Severity | Issue |
-|----------|-------|
-| CRITICAL | [Board won't function, safety hazard, or fabrication failure] |
-| WARNING  | [Suboptimal but board may work, potential reliability issue] |
-| SUGGESTION | [Improvements, best practices, documentation gaps] |
+| Severity | Issue | Detail |
+|----------|-------|--------|
+| CRITICAL | [Board won't function, safety hazard, or fabrication failure] | [Full explanation, datasheet citation, affected components] |
+| WARNING  | [Suboptimal but board may work, potential reliability issue] | [Full explanation, recommendation] |
+| SUGGESTION | [Improvements, best practices, documentation gaps] | [Rationale, optional fix] |
 
 ## Positive Findings
 [Numbered list of things the design does well — builds designer confidence and validates good practices]
@@ -407,8 +417,8 @@ Focus on: power sequencing (EN/PG chains from analyzer), input protection (TVS, 
 The analyzer can silently produce wrong results that look plausible. In testing across 8 diverse boards, every single project had at least one analyzer output that was misleading or incorrect — wrong voltage estimates, false connectivity warnings, undetected MPNs, overestimated sleep currents. These errors don't cause script failures; they just quietly produce bad data that flows into your report. The verification steps below are not optional — they are what separates a trustworthy report from a dangerous one. Always cross-reference:
 
 1. **Component count**: Compare analyzer total vs grep for placed symbol instances in raw `.kicad_sch`. Use `grep -c '(lib_id' file.kicad_sch` (works for KiCad 6-9 regardless of newlines in symbol blocks). Subtract power symbols.
-2. **IC properties**: For 3-5 key ICs, verify lib_id, value, footprint, and pin count match the raw file. Use grep to extract specific component blocks rather than reading the entire file.
-3. **Net connectivity**: Trace 2-3 important nets end-to-end — verify every pin the analyzer reports is actually connected. For automated tracing, grep for label names and wire coordinates.
+2. **IC pinout verification**: For **every** IC and active component, verify lib_id, value, footprint, pin count, and complete pin-to-net mapping against the raw file. This is not a spot-check — verify all of them. Use grep to extract specific component blocks. Swapped pins are the most common cause of non-functional boards and are invisible to DRC/ERC.
+3. **Net connectivity**: Trace all power rails and critical signal nets end-to-end — verify every pin the analyzer reports is actually connected. For automated tracing, grep for label names and wire coordinates.
 4. **Signal analysis**: For each detected subcircuit, read the raw schematic around those components to confirm the topology
 5. **Hierarchical sheets**: Verify all sub-sheets were parsed (check `sheets` section in JSON vs actual `.kicad_sch` files on disk). Use `grep -c '(sheet ' file.kicad_sch` to count sub-sheet references.
 

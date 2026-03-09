@@ -45,19 +45,29 @@ Use this structured data as the starting point — it replaces manual component 
 
 ### Step 2: Verify script output against the raw schematic
 
-Perform a quick sanity check on the analyzer output before using it for deeper analysis. This catches cases where the script silently misparses something.
+Perform thorough verification of the analyzer output against the raw schematic. This is not a quick spot-check — it's the primary defense against silent misparsing that leads to incorrect analysis.
 
-1. **Component spot-check**: Read the raw `.kicad_sch` file and count `(symbol (lib_id ...))` blocks in the placed symbols section (after `(lib_symbols)`). Subtract power symbols (`#PWR`, `#FLG`). Compare against the analyzer's component count — should match exactly.
+1. **Component count**: Read the raw `.kicad_sch` file and count `(symbol (lib_id ...))` blocks in the placed symbols section (after `(lib_symbols)`). Subtract power symbols (`#PWR`, `#FLG`). Compare against the analyzer's component count — must match exactly.
 
-2. **IC verification**: For each IC in the analyzer output, verify its value, lib_id, and footprint match what's in the raw file. Pay special attention to multi-unit symbols (op-amps, MCUs) — the analyzer should list each unit separately.
+2. **Complete pinout verification for ALL components**: For **every** component in the design (ICs, connectors, transistors, diodes, multi-pin passives), verify:
+   - Value, lib_id, and footprint match the raw file
+   - **Every pin's net assignment** matches the raw schematic (trace wires/labels from each pin position). This is the most critical check — a single swapped pin produces a non-functional board and passes DRC/ERC silently.
+   - For ICs: cross-reference pin assignments against the manufacturer's datasheet pin table (not just the KiCad library). Library symbols can have wrong pin mappings.
+   - Multi-unit symbols (op-amps, MCUs) list each unit separately with correct pin assignments
+   - Pin count matches between the library symbol and the analyzer output
+   - For transistors: verify pinout matches datasheet (SOT-23 pinout varies: BCE vs BEC vs CBE)
+   - For polarized components: verify anode/cathode and +/- orientation
+   - For 2-pin passives in critical positions (voltage dividers, feedback networks, filter caps): verify they connect between the correct nets
 
-3. **Net spot-check**: Pick 2-3 important nets (a power rail, a signal net, a bus line) and trace them manually through the raw file — follow wires from pin coordinates through labels and junctions. Verify the analyzer's pin list for that net is complete.
+   Do not sample or limit this to "key" components. The part you skip is the one with the problem. Verify all of them.
+
+3. **Full net tracing**: Trace all power rails and critical signal nets end-to-end through the raw file — follow wires from pin coordinates through labels and junctions. Verify the analyzer's pin list for each net is complete. Don't limit to 2-3 nets; trace every power rail and every bus.
 
 4. **Regulator sanity**: For each detected power regulator, verify in the raw file that the component actually has VIN/VOUT (or FB/SW) pins and connects to the reported power rails. Custom-library regulators without standard keywords are a known edge case — check that the analyzer didn't miss any obvious LDOs or converters.
 
-5. **Critical components**: Identify the 3-5 most important ICs in the design (main MCU, power converters, analog ICs). Verify each appears in the analyzer output with correct data.
+5. **Connector pinout verification**: For every connector, verify pin-to-net mapping against the relevant standard or mating connector. Connector pinout errors are among the most common mistakes (see Connector Pinout Verification section below).
 
-This verification typically takes 2-3 minutes and catches the rare cases where the analyzer silently drops components or misidentifies subcircuits.
+This thorough verification catches the cases where the analyzer silently drops components, misidentifies subcircuits, or — most dangerously — reports wrong pin-to-net mappings.
 
 ### Step 3: Review and augment subcircuit identification
 
@@ -70,18 +80,35 @@ The analyzer's `signal_analysis` automatically identifies most subcircuits. Revi
 
 ### Step 4: Fetch and analyze datasheets
 
-**Check for local datasheets first.** Before downloading anything, look for a `datasheets/` directory in the project (next to the schematic, or in the project root). If an `index.json` exists there, it maps MPNs to local PDF files — use these directly instead of fetching from URLs. Also search for PDF files whose names contain the MPN (the digikey skill names them as `<MPN>_<Description>.pdf`). Common locations to check:
-- `<project>/datasheets/` (created by `sync_datasheets.py`)
-- `<project>/docs/` or `<project>/documentation/`
-- Same directory as the schematic
+**Datasheets are mandatory for verification — not optional reference material.** Without datasheets, you cannot confirm that the schematic's pin assignments match reality. Every IC pinout verification in Step 2 requires the datasheet's pin table as ground truth.
 
-If no local datasheets exist, retrieve them from the `Datasheet` property URL or by searching the MPN. For each IC and active component, extract and **note the page/section numbers** for later citation:
+**Automated sync (preferred):** If the `digikey` skill is installed, run `sync_datasheets.py` on the schematic. This should have been done in the workflow's Step 3 (see SKILL.md). If not done yet, run it now:
+
+```bash
+python3 <digikey-skill-path>/scripts/sync_datasheets.py <file.kicad_sch>
+```
+
+**Check for existing datasheets:** Before downloading, look for:
+- `<project>/datasheets/` with `index.json` (from a previous sync)
+- `<project>/docs/` or `<project>/documentation/`
+- PDF files in the project directory whose names contain MPNs
+- `Datasheet` property URLs embedded in the KiCad symbols (the digikey skill names them as `<MPN>_<Description>.pdf`)
+
+**If datasheets are missing for any component:** Use these fallback methods in order:
+1. Use the `Datasheet` property URL from the schematic symbol
+2. Use the `digikey` skill to search by MPN and download
+3. Use WebSearch to find the manufacturer's datasheet page
+4. **Ask the user** — do not silently skip verification. Tell them: "I need datasheets for [list of parts] to verify the pinout and application circuit. Can you provide them or point me to a datasheets directory?"
+
+For each IC and active component, extract and **note the page/section numbers** for later citation:
+- **Pin function table** (pin number → name → function) — this is the ground truth for pinout verification
 - Absolute maximum ratings (voltage, current, temperature)
 - Recommended operating conditions
 - Typical/reference application circuit (note the figure number, e.g., "Figure 8-1")
-- Pin descriptions and functions (note the table number)
 - Required external components (with recommended values and the equation number, e.g., "Equation 4")
 - Thermal characteristics (junction-to-ambient, power dissipation limits)
+
+**For passives:** Individual resistor/capacitor datasheets aren't usually needed, but verify passive values against the IC datasheets that specify them. If an IC datasheet says "use 10µF X5R on VIN" and the schematic has 1µF or Y5V, that's a bug.
 
 These references are essential for the report — every design validation claim should cite the specific datasheet section, page, figure, or equation it was checked against.
 

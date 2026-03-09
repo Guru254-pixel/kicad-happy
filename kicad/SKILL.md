@@ -68,11 +68,11 @@ When `analyze_schematic.py` returns incomplete data (typically legacy `.sch` for
 
 For detailed parsing instructions, data recovery workflows, and a priority matrix of supplementary sources (netlist, cache library, PCB cross-reference, PDF exports), read `references/supplementary-data-sources.md`.
 
-**Mandatory verification after every run:** The analyzer can silently produce incorrect results — wrong voltage estimates from Vref assumptions, missing MPNs due to non-standard property names, PWR_FLAGs mapped to wrong nets. These don't cause script errors but lead to wrong conclusions. After every run, read the raw `.kicad_sch` file and perform these checks:
+**Mandatory verification after every run:** The analyzer can silently produce incorrect results — wrong voltage estimates from Vref assumptions, missing MPNs due to non-standard property names, PWR_FLAGs mapped to wrong nets, and most critically, wrong or incomplete pin-to-net mappings. These don't cause script errors but lead to wrong conclusions. After every run, read the raw `.kicad_sch` file and perform these checks:
 
 1. **Component count** — grep for placed `(symbol (lib_id ...))` blocks, subtract power symbols. Must match analyzer count exactly.
-2. **IC spot-check** — verify 3-5 key ICs: lib_id, value, footprint, pin count against raw file.
-3. **Net trace** — pick 2-3 important nets and trace them manually through wires/labels. Verify the analyzer's pin list is complete.
+2. **Complete pinout verification for ALL components** — for **every** component in the design (ICs, connectors, transistors, diodes, multi-pin passives — not just a sample), verify the analyzer's pin-to-net mapping against the raw schematic. Read the symbol block, extract its pin positions, trace wires/labels to confirm each pin connects to the reported net. Cross-reference IC pin assignments against the manufacturer's datasheet pin table. This is the single most important verification step — a wrong pin mapping produces a non-functional board and is invisible to DRC/ERC. For 2-pin passives, verify they connect between the correct nets (especially voltage divider resistors, feedback resistors, and filter caps).
+3. **Net trace** — trace all power rails and critical signal nets end-to-end through wires/labels. Verify the analyzer's pin list is complete for each net.
 4. **Regulator Vout** — for each detected regulator, check the `vref_source` field. When `"lookup"`, the Vref comes from a datasheet-verified table (~60 families). When `"heuristic"`, the Vref is a guess — verify against the actual part's datasheet. The `vout_net_mismatch` field flags cases where the estimated Vout differs >15% from the output rail name voltage.
 5. **Hierarchical connectivity** — on multi-sheet designs, verify that root-level wires between sheet pin stubs are reflected in the net data. Sheet pin stubs are now extracted as hierarchical labels, but complex wiring topologies at the root level may still have edge cases.
 
@@ -92,7 +92,7 @@ Outputs structured JSON (~50-300KB depending on board complexity) with:
 
 Add `--full` to include individual track/via coordinates. Supports KiCad 5 legacy format.
 
-**Verify after every run:** Spot-check footprint count against the raw `.kicad_pcb` file, verify 2-3 key footprint pad-net assignments, and confirm board outline dimensions match. If the script fails or returns unexpected results, see `references/manual-pcb-parsing.md` for the complete fallback methodology.
+**Verify after every run:** Verify footprint count against the raw `.kicad_pcb` file, confirm board outline dimensions match, and — critically — verify pad-to-net assignments for **every** IC footprint (not just 2-3 spot-checks). Read the raw PCB file's footprint blocks and confirm each pad's net matches the schematic's pin-to-net mapping. This catches library footprint errors where pad numbering doesn't match the symbol pinout. If the script fails or returns unexpected results, see `references/manual-pcb-parsing.md` for the complete fallback methodology.
 
 ### Gerber & Drill Analyzer
 ```bash
@@ -108,20 +108,70 @@ All scripts output JSON to stdout. Use `--output file.json` to write to a file, 
 
 1. **Scan the project directory** for `.kicad_sch`, `.kicad_pcb`, `.kicad_pro`, gerber directories, and `.net`/`.xml` netlist files
 2. **Run all applicable scripts** — if the schematic exists, run `analyze_schematic.py`. If the PCB exists, run `analyze_pcb.py`. If gerbers exist, run `analyze_gerbers.py`. Run them in parallel when possible.
-3. **Read the `.kicad_pro`** project file directly (it's JSON) for design rules, net classes, and DRC/ERC settings
-4. **Cross-reference outputs** between schematic and PCB (see section below) — this catches the most dangerous bugs (swapped pins, missing nets, footprint mismatches)
-5. **Verify each output** against the raw files before using the data in your report
-6. **Produce a unified report** covering schematic analysis, PCB layout analysis, and cross-reference findings. See `references/report-generation.md` for the report template.
+3. **Sync datasheets** (see Datasheet Acquisition below) — datasheets are required for proper verification, not optional. Get them before proceeding to verification.
+4. **Read the `.kicad_pro`** project file directly (it's JSON) for design rules, net classes, and DRC/ERC settings
+5. **Cross-reference outputs** between schematic and PCB (see section below) — this catches the most dangerous bugs (swapped pins, missing nets, footprint mismatches)
+6. **Verify each output** against the raw files and datasheets before using the data in your report
+7. **Produce a unified report** covering schematic analysis, PCB layout analysis, and cross-reference findings. See `references/report-generation.md` for the report template.
 
 The more data sources you combine, the more confident the analysis. A schematic-only review misses layout issues; a PCB-only review misses design intent. Always use everything available.
 
+### Analysis Depth: Deep by Default
+
+**Always perform the deepest analysis feasible.** Do not limit verification to spot-checks or sampling unless the user explicitly asks for a quick/shallow review. The default posture is:
+
+- **Complete pinout verification for ALL components** — verify the pin-to-net mapping for **every** component in the design: ICs, active components, connectors, transistors, diodes, and multi-pin passives. Don't skip "simple" parts — a reversed diode, a transistor with swapped collector/emitter, or a connector with wrong pin ordering is just as fatal as a swapped IC pin. For 2-pin passives (resistors, caps), verify they connect to the correct nets (wrong resistor in a voltage divider is a common silent bug).
+- **Full net tracing** — trace all power rails and critical signal nets end-to-end, not just 2-3 samples. Verify every pin the analyzer reports on each net is actually connected.
+- **Cross-reference everything** — when both schematic and PCB exist, verify pin-net assignments for every component across both files. Don't stop at component counts and spot-checks.
+- **Datasheet-driven validation is mandatory** — for every IC and active component, the datasheet must be obtained and referenced during verification. A library symbol with a wrong pin mapping is a silent killer. Verify the actual pin functions and connections against the manufacturer's datasheet, not just the analyzer output. See "Datasheet Acquisition" below for how to get them.
+
+This deep verification is what catches the bugs that matter most. A spot-check might confirm 5 ICs are correct while the 6th has pins 3 and 4 swapped — and that's the one that kills the board. When in doubt, verify more, not less.
+
+### Datasheet Acquisition
+
+**Datasheets are required, not optional.** Every verification claim must be backed by the manufacturer's datasheet. Without datasheets, you're just checking internal consistency — not correctness.
+
+**Automated sync (preferred):** If the `digikey` skill is installed, run `sync_datasheets.py` on the schematic early in the workflow. This downloads datasheets for all components with MPNs into a `datasheets/` directory with an `index.json` manifest. Run it in parallel with the analyzer scripts:
+
+```bash
+python3 <digikey-skill-path>/scripts/sync_datasheets.py <file.kicad_sch>
+```
+
+**Check for existing datasheets:** Before downloading, look for:
+- `<project>/datasheets/` with `index.json` (from a previous sync)
+- `<project>/docs/` or `<project>/documentation/`
+- PDF files in the project directory whose names contain MPNs
+- `Datasheet` property URLs embedded in the KiCad symbols
+
+**Fallback methods when automated sync isn't available or misses parts:**
+1. Use the `Datasheet` property URL from the schematic symbol — many KiCad libraries include direct PDF links
+2. Use the `digikey` skill to search by MPN and download individual datasheets
+3. Use WebSearch to find the manufacturer's datasheet page
+4. **Ask the user** — if a critical component's datasheet can't be found automatically, tell the user which parts are missing and ask them to provide the datasheets. Don't silently skip verification because a datasheet wasn't available. Example: "I couldn't find datasheets for U3 (XYZ1234) and U7 (ABC5678). Can you provide them? I need them to verify the pinout and application circuit."
+
+**What to extract from each datasheet** (note page/section/figure/equation numbers for citations):
+- Pin function table (pin number → name → function)
+- Absolute maximum ratings
+- Recommended application circuit and required external components
+- Required component values (and the equations that derive them)
+- Thermal characteristics
+
+**For passives:** While individual resistor/capacitor datasheets are rarely needed, verify the component values against the IC datasheets that specify them. The IC's datasheet says "use a 10µF input cap" — verify the schematic actually has 10µF there, not 1µF.
+
 ### Schematic + PCB Cross-Reference
 
-When both a schematic and PCB file exist for a project, run both analyzers and cross-reference the outputs for a more thorough analysis:
+When both a schematic and PCB file exist for a project, run both analyzers and cross-reference the outputs. **This is the most critical part of the analysis** — cross-reference bugs (swapped pins, missing nets, footprint mismatches) are the most expensive because they produce boards that don't work and aren't caught by DRC/ERC.
 
 1. **Component count**: Compare schematic component count (excluding power symbols) against PCB footprint count. Mismatches indicate unplaced or orphaned components.
 2. **Net consistency**: Verify schematic net names appear in the PCB net declarations. Missing nets may indicate incomplete routing or schematic changes not yet pushed to the PCB.
-3. **Pin-net assignments**: For critical ICs, compare schematic pin-to-net mapping against PCB pad-to-net mapping. Mismatches reveal swapped pins or library errors — these are the most dangerous bugs because they pass DRC/ERC but produce non-functional boards.
+3. **Pin-net assignments for ALL components**: Compare schematic pin-to-net mapping against PCB pad-to-net mapping for **every** component — ICs, connectors, transistors, diodes, and multi-pin passives. Not just a handful. Mismatches reveal swapped pins or library errors. These are the most dangerous bugs because they pass DRC/ERC but produce non-functional boards. Pay extra attention to:
+   - ICs where the KiCad library symbol may not match the manufacturer's datasheet pinout (custom symbols, community libraries)
+   - Multi-unit symbols (op-amps, gate arrays) where unit-to-pin assignment can be wrong
+   - QFN/BGA packages where pad numbering is easy to get wrong
+   - Connectors where pin 1 orientation matters
+   - Transistors (SOT-23 pinout varies between manufacturers: BCE vs BEC vs CBE)
+   - Polarized components (diodes, electrolytic caps, LEDs) — verify anode/cathode orientation
+   - 2-pin passives in critical positions (voltage dividers, feedback networks) — verify they connect to the correct nets
 4. **Footprint match**: Verify schematic `(property "Footprint" ...)` matches the actual footprint used on the PCB. Package mismatches (e.g., SOT-23 vs SOT-23-5) cause assembly failures.
 5. **DNP consistency**: Components marked DNP in the schematic should not have routing on the PCB (or should be flagged for review).
 6. **Value/MPN consistency**: Check that component values and MPNs match between schematic and PCB properties.
@@ -144,7 +194,7 @@ Detailed methodology and format documentation lives in reference files. Read the
 | `manual-schematic-parsing.md` | 285 | Fallback when schematic script fails |
 | `manual-pcb-parsing.md` | 457 | Fallback when PCB script fails |
 | `manual-gerber-parsing.md` | 621 | Fallback when Gerber script fails |
-| `report-generation.md` | 436 | Report template with all analysis dimensions, analyzer output field reference (schematic/PCB/gerber), severity definitions, writing principles, domain-specific focus areas, known analyzer limitations |
+| `report-generation.md` | 450 | Report template (critical findings at top), analyzer output field reference (schematic/PCB/gerber), severity definitions, writing principles, domain-specific focus areas, known analyzer limitations |
 
 For script internals, data structures, signal analysis patterns, and batch test suite documentation, see `scripts/README.md`.
 
@@ -185,7 +235,7 @@ Most routine PCB analysis (via types, annular ring, placement, connectivity, the
 
 **PCB** — verify: power trace widths for current (IPC-2221), via current capacity, creepage/clearance for high voltage, decoupling cap proximity to IC power pins, continuous ground plane (no splits under signals), controlled impedance traces (USB/DDR), board outline closed polygon, silkscreen readability.
 
-**Common bugs**: swapped pins (library errors), missing nets (schematic→PCB sync), wrong footprint (SOT-23 vs SOT-23-5), floating digital inputs, missing bulk caps, reversed polarity, incorrect feedback divider, wrong crystal load caps, USB impedance mismatch, QFN thermal pad missing vias.
+**Common bugs (ranked by severity)**: swapped/misconnected IC pins (library symbol doesn't match datasheet pinout — **#1 silent killer, verify every IC**), wrong footprint pad numbering (symbol pin 1 ≠ footprint pad 1), missing nets (schematic→PCB sync), wrong footprint package (SOT-23 vs SOT-23-5), floating digital inputs, missing bulk caps, reversed polarity, incorrect feedback divider, wrong crystal load caps, USB impedance mismatch, QFN thermal pad missing vias, connector pinout errors.
 
 ### Report Generation
 
